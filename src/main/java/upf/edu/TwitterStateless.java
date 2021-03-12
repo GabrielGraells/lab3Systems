@@ -46,7 +46,7 @@ public class TwitterStateless {
                 );
 
         // print first 10 results
-        languageRankStream.print(10);
+        languageRankStream.print(15);
 
         // Start the application and wait for termination signal
         jsc.start();
