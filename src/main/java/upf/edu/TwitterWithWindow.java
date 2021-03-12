@@ -8,6 +8,7 @@ import org.apache.spark.streaming.api.java.JavaPairDStream;
 import org.apache.spark.streaming.api.java.JavaReceiverInputDStream;
 import org.apache.spark.streaming.api.java.JavaStreamingContext;
 import org.apache.spark.streaming.twitter.TwitterUtils;
+import scala.Tuple2;
 import twitter4j.Status;
 import twitter4j.auth.OAuthAuthorization;
 import upf.edu.util.ConfigUtils;
@@ -35,17 +36,35 @@ public class TwitterWithWindow {
                 .buildLanguageMap(languageMapLines);
 
         // create an initial stream that counts language within the batch (as in the previous exercise)
-        final JavaPairDStream<String, Integer> languageCountStream = null; // IMPLEMENT ME
+        final JavaPairDStream<String, Integer> languageCountStream = stream
+                .transformToPair(element -> element
+                        .mapToPair(tweet -> new Tuple2<String, Integer>(tweet.getLang(), 1))
+                        .join(languageMap)
+                        .mapToPair(langTweet -> new Tuple2<String, Integer>(langTweet._2._2, langTweet._2._1))
+                        .reduceByKey((a,b) -> a+b)
+                ); // IMPLEMENT ME
 
         // Prepare output within the batch
-        final JavaPairDStream<Integer, String> languageBatchByCount = null; // IMPLEMENT ME
+        final JavaPairDStream<Integer, String> languageBatchByCount = languageCountStream
+                .mapToPair(x -> new Tuple2<Integer, String>(x._2,x._1))
+                .transformToPair(rdd -> rdd
+                .sortByKey(false)); // IMPLEMENT ME
 
         // Prepare output within the window
-        final JavaPairDStream<Integer, String> languageWindowByCount = null; // IMPLEMENT ME
+        final JavaPairDStream<Integer, String> languageWindowByCount = stream
+                .window(Durations.seconds(300))
+                .transformToPair((element -> element
+                    .mapToPair(tweet -> new Tuple2<String, Integer>(tweet.getLang(), 1))
+                    .join(languageMap)
+                    .mapToPair(langTweet -> new Tuple2<String, Integer>(langTweet._2._2, langTweet._2._1))
+                    .reduceByKey((a,b) -> a+b)))
+                    .mapToPair(x -> new Tuple2<Integer, String>(x._2, x._1))
+                    .transformToPair(rdd -> rdd
+                        .sortByKey(false)); // IMPLEMENT ME
 
         // Print first 15 results for each one
-        languageBatchByCount.print();
-        languageWindowByCount.print();
+        languageBatchByCount.print(15);
+        languageWindowByCount.print(15);
 
         // Start the application and wait for termination signal
         jsc.start();
