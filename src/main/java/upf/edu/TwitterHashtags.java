@@ -33,12 +33,12 @@ public class TwitterHashtags {
 		JavaDStream<String> hashtags = languageTweets.flatMap(s -> Arrays.asList(s.getHashtagEntities()).iterator()).map(s -> s.getText());
 		
 		try{
-			languageTweets.foreachRDD(s ->{ 
-				List<Status> list_s = s.collect();
-				DynamoHashTagRepository dynamoDBRepository = new DynamoHashTagRepository();
-				for(int i=0; i<list_s.size();i++) {
+		languageTweets.foreachRDD(s ->{ 
+			List<Status> list_s = s.collect();
+			DynamoHashTagRepository dynamoDBRepository = new DynamoHashTagRepository();
+			for(int i=0; i<list_s.size();i++) {
 					dynamoDBRepository.write(list_s.get(i));
-				}
+			}
 			});
 		}
 		catch(Exception e){
