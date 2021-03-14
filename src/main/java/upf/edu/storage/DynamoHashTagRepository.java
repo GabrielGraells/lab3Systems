@@ -20,6 +20,7 @@ import com.amazonaws.services.dynamodbv2.model.*;
 
 
 public class DynamoHashTagRepository implements IHashtagRepository, Serializable {
+	//Standard DynamoDB configurations
 	final static String endpoint = "dynamodb.us-east-1.amazonaws.com";
 	final static String region = "us-east-1";
 	  final AmazonDynamoDB client = AmazonDynamoDBClientBuilder.standard()
@@ -33,69 +34,86 @@ public class DynamoHashTagRepository implements IHashtagRepository, Serializable
 
   @Override
   public void write(Status tweet) {
-	  HashtagEntity hashtags[] = tweet.getHashtagEntities();
-	    for(HashtagEntity h : hashtags){
-	      GetItemSpec getItem = new GetItemSpec().withPrimaryKey("hashtag", h.getText(), "language", tweet.getLang());
-	      Item outcome = dynamoDBtable.getItem(getItem);
-	      if(outcome == null){
-	        List<Long> tweets = new ArrayList<Long>();
-	        tweets.add(tweet.getId());
-	        Item newItem = new Item().withPrimaryKey("hashtag", h.getText(), "language", tweet.getLang())
-	                          .withLong("counter", 1)
-	                          .withList("tweetId", tweets);
-	        try {
-	          dynamoDBtable.putItem(newItem);
-	        }
-	        catch (Exception e){
-	          System.out.println(e);
-	        }
+	  //Create array of hashtagentities and get those entities from twitter
+	  HashtagEntity hashtags_entities[] = tweet.getHashtagEntities();
+	    
+	  for(HashtagEntity h : hashtags_entities){
+		  //GetItemSpecs and Item given PK hashtag
+	      GetItemSpec hashtag = new GetItemSpec().withPrimaryKey("hashtag", h.getText());
+	      
+	      Item hashtag_item = dynamoDBtable.getItem(hashtag);
+	      
+	      if(hashtag_item != null){
+	    	  //Case when the hashtag already in the table
+	          List<Long> tweets = hashtag_item.getList("tweetId");
+		      tweets.add(tweet.getId());
+		       //Create item, meaning sum one to the counter
+		      Item existHashtag = new Item().withPrimaryKey("hashtag", h.getText())
+		        		.withString("language", tweet.getLang())
+		                .withLong("counter", hashtag_item.getLong("counter") + 1L)
+		                .withList("tweetId", tweets);
+		        
+		       dynamoDBtable.putItem(existHashtag);
 	      }
+	      
 	      else{
-	        List<Long> tweets = outcome.getList("tweetId");
-	        tweets.add(tweet.getId());
-	        
-	        Item newItem = new Item().withPrimaryKey("hashtag", h.getText(), "language", tweet.getLang())
-	                .withLong("counter", outcome.getLong("counter") + 1L)
-	                .withList("tweetId", tweets);
-	        try {
-	          dynamoDBtable.putItem(newItem);
-	        }
-	        catch (Exception e){
-	          System.out.println(e);
-	        }
+	    	  //Create a new item and added to the table, put counter 1
+	    	  List<Long> tweets = new ArrayList<Long>();
+		      tweets.add(tweet.getId());
+		      Item newHashtag = new Item().withPrimaryKey("hashtag", h.getText())
+		        				  .withString("language", tweet.getLang())
+		                          .withLong("counter", 1)
+		                          .withList("tweetId", tweets);
+
+		       dynamoDBtable.putItem(newHashtag);
+	 
 	      }
+	      
 	    }
   }
 
   @Override
   public List<HashTagCount> readTop10(String lang) {
-	    HashMap<String, Condition> scanFilter = new HashMap<String, Condition>();
+	  
+	  //Create two list hashtags and hashtags top 10
+	  	List<HashTagCount> hashtags = new ArrayList<>();
+	    List<HashTagCount> hashcount_top10 = new ArrayList<>();
 	    
+	    HashMap<String, Condition> sFilter = new HashMap<String, Condition>();
+	    
+	    //Create the condition to get tweets in the specified language
 	    Condition c= new Condition()
 	            .withComparisonOperator(ComparisonOperator.EQ)
 	            .withAttributeValueList(new AttributeValue().withS(lang));
 	    
-	    scanFilter.put("language", c);
-	    ScanRequest scanRequest = new ScanRequest("LSDS2020-TwitterHashtags").withScanFilter(scanFilter);
-	    ScanResult scanResult = client.scan(scanRequest);
+	    //Perform the scan with the specified filter ( tweets in the same language)
+	    sFilter.put("language", c);
+	    ScanRequest sRequest = new ScanRequest("LSDS2020-TwitterHashtags").withScanFilter(sFilter);
+	    ScanResult sResult = client.scan(sRequest);
 	    
-	    List<Map<String, AttributeValue>> items = scanResult.getItems();
-	    List<HashTagCount> hashtags = new ArrayList<>();
+	    //Get the items in the scan
+	    List<Map<String, AttributeValue>> table_items = sResult.getItems();
 	    
-	    for(Map<String, AttributeValue> it : items){
-	      GetItemSpec getItem = new GetItemSpec().withPrimaryKey("hashtag", it.get("hashtag").getS(), "language", it.get("language").getS());
-	      Item outcome = dynamoDBtable.getItem(getItem);
-	      HashTagCount htc = new HashTagCount((String)outcome.get("hashtag"),(String)outcome.get("language"),((BigDecimal) outcome.get("counter")).longValue());
-	      hashtags.add(htc);
+	   //For each item, get the language and counter 
+	    for(Map<String, AttributeValue> item : table_items){
+	      GetItemSpec hashtag = new GetItemSpec().withPrimaryKey("hashtag", item.get("hashtag").getS());
+	      Item hashtag_item = dynamoDBtable.getItem(hashtag);
+	      
+	      HashTagCount hashcount = new HashTagCount((String)hashtag_item.get("hashtag"),(String)hashtag_item.get("language"),((BigDecimal) hashtag_item.get("counter")).longValue());
+	      
+	      hashtags.add(hashcount);
 	    }
 	    
+	    //sort with counter
 	    hashtags.sort(new HashtagComparator());
-	    List<HashTagCount> result = new ArrayList<>();
+	    Collections.reverse(hashtags);
 	    
+	    //add top elements to hashcount_top10
 	    for(int i = 0; i < 10; i++){
-	      result.add(hashtags.get(i));
+	      hashcount_top10.add(hashtags.get(i));
 	    }
-	    return result;
+	    
+	    return hashcount_top10;
 	  }
   
 

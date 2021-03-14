@@ -23,32 +23,30 @@ public class TwitterHashtags {
         OAuthAuthorization auth = ConfigUtils.getAuthorizationFromFileProperties(propertiesFile);
 
         SparkConf conf = new SparkConf().setAppName("Real-time Twitter Example");
-        JavaStreamingContext jsc = new JavaStreamingContext(conf, Durations.seconds(10));
+        JavaStreamingContext jsc = new JavaStreamingContext(conf, Durations.seconds(5));
         // This is needed by spark to write down temporary data
         jsc.checkpoint("/tmp/checkpoint");
 
         final JavaReceiverInputDStream<Status> stream = TwitterUtils.createStream(jsc, auth);
 
-        JavaDStream<Status> languageTweets = stream.filter(s -> s.getLang().equals(language))
-                .filter(s -> s.getHashtagEntities().length > 0);
-
-		JavaDStream<String> hashtags = languageTweets.flatMap(s -> Arrays.asList(s.getHashtagEntities()).iterator())
-		                .map(s -> s.getText());
+        JavaDStream<Status> languageTweets = stream.filter(s -> s.getLang().equals(language)).filter(s -> s.getHashtagEntities().length > 0);
+		JavaDStream<String> hashtags = languageTweets.flatMap(s -> Arrays.asList(s.getHashtagEntities()).iterator()).map(s -> s.getText());
+		
 		try{
-			languageTweets.foreachRDD(
-			s ->{
-				DynamoHashTagRepository dynamoDBRepository = new DynamoHashTagRepository();
+			languageTweets.foreachRDD(s ->{ 
 				List<Status> list_s = s.collect();
-			//System.out.println(l.size());
-			for(Status status : list_s) {
-				dynamoDBRepository.write(status);
-			}
+				DynamoHashTagRepository dynamoDBRepository = new DynamoHashTagRepository();
+				for(int i=0; i<list_s.size();i++) {
+					dynamoDBRepository.write(list_s.get(i));
+				}
 			});
 		}
 		catch(Exception e){
 			System.out.println(e);
 		}
-		hashtags.print();
+		
+		//DEBUG
+		//hashtags.print(); 
 
         // Start the application and wait for termination signal
         jsc.start();
